@@ -126,8 +126,15 @@ function mergeUser(existing, incoming) {
   return {
     ...existing,
     ...incoming,
-    // Preserve locally assigned roles by merging with provider roles
-    roles: Array.from(new Set([...(existing.localRoles || []), ...(incoming.roles || [])])),
+    // Merge all three role sources: previous provider roles, locally assigned roles,
+    // and newly received provider roles – deduplicating across all.
+    roles: Array.from(
+      new Set([
+        ...(existing.roles || []),
+        ...(existing.localRoles || []),
+        ...(incoming.roles || []),
+      ])
+    ),
     localRoles: existing.localRoles || [],
     createdAt: existing.createdAt, // preserve original creation time
     updatedAt: new Date().toISOString(),

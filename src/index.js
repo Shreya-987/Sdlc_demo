@@ -3,6 +3,8 @@
 const express = require('express');
 const session = require('express-session');
 const passport = require('passport');
+const rateLimit = require('express-rate-limit');
+const { doubleCsrf } = require('csrf-csrf');
 const { router: samlRouter, initSamlRoutes } = require('./saml/samlRoutes');
 const { router: oidcRouter } = require('./oidc/oidcRoutes');
 const { router: profileRouter } = require('./profile/profileRoutes');
@@ -33,10 +35,49 @@ function createApp() {
       cookie: {
         secure: process.env.NODE_ENV === 'production',
         httpOnly: true,
+        sameSite: 'lax',
         maxAge: 8 * 60 * 60 * 1000, // 8 hours
       },
     })
   );
+
+  // ── CSRF protection ───────────────────────────────────────────────────────
+  // The SAML ACS endpoint (/auth/saml/callback) is a cross-origin POST from
+  // the IdP, so it must be exempted from CSRF checks.
+  const { generateToken, doubleCsrfProtection } = doubleCsrf({
+    getSecret: () => process.env.CSRF_SECRET || 'csrf-secret-change-in-production',
+    cookieName: '__Host-psifi.x-csrf-token',
+    cookieOptions: {
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      httpOnly: true,
+    },
+    size: 64,
+    ignoredMethods: ['GET', 'HEAD', 'OPTIONS'],
+  });
+
+  // Apply CSRF protection to all routes except the IdP callback endpoints
+  app.use((req, res, next) => {
+    const samlCallback = req.path === '/auth/saml/callback' && req.method === 'POST';
+    if (samlCallback) {
+      return next();
+    }
+    return doubleCsrfProtection(req, res, next);
+  });
+
+  // Endpoint to retrieve a fresh CSRF token (for SPA / form rendering)
+  app.get('/auth/csrf-token', (req, res) => {
+    res.json({ csrfToken: generateToken(req, res) });
+  });
+
+  // ── Rate limiting on authentication endpoints ─────────────────────────────
+  const authRateLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many authentication attempts. Please try again later.' },
+  });
 
   // ── Passport ──────────────────────────────────────────────────────────────
   app.use(passport.initialize());
@@ -53,8 +94,8 @@ function createApp() {
   initSamlRoutes();
 
   // ── Routes ────────────────────────────────────────────────────────────────
-  app.use('/auth', samlRouter);
-  app.use('/auth', oidcRouter);
+  app.use('/auth', authRateLimiter, samlRouter);
+  app.use('/auth', authRateLimiter, oidcRouter);
   app.use('/api/users', profileRouter);
   app.use('/api/auth-events', authEventRouter);
 
