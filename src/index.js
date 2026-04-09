@@ -46,7 +46,7 @@ function createApp() {
   // the IdP, so it must be exempted from CSRF checks.
   const { generateToken, doubleCsrfProtection } = doubleCsrf({
     getSecret: () => process.env.CSRF_SECRET || 'csrf-secret-change-in-production',
-    cookieName: '__Host-psifi.x-csrf-token',
+    cookieName: '__Host-enterprise-sso.x-csrf-token',
     cookieOptions: {
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',

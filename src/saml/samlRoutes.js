@@ -52,7 +52,7 @@ router.get(
 /**
  * POST /auth/saml/callback
  * Assertion Consumer Service (ACS) endpoint.
- * The IdP POST the SAML response here after authentication.
+ * The IdP POSTs the SAML response here after authentication.
  */
 router.post(
   '/saml/callback',
